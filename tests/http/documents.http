@@ -1,0 +1,13 @@
+@token = 2|HAhRf1NajDWYsFidoUCVu3Zv0Kt49Xk08n9miCbT816a5321
+
+### Upload de documento
+POST http://localhost/api/documents
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
+
+------WebKitFormBoundary
+Content-Disposition: form-data; name="document"; filename="teste.pdf"
+Content-Type: application/pdf
+
+< ./teste.pdf
+------WebKitFormBoundary--
