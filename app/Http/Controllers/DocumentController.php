@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use App\Jobs\ProcessDocument;
 
 class DocumentController extends Controller
 {
@@ -33,6 +34,8 @@ class DocumentController extends Controller
             'file_size' => $file->getSize(),
             'status' => 'uploaded',
         ]);
+
+        ProcessDocument::dispatch($document->id);
 
         return response()->json([
             'message' => 'Documento enviado com sucesso.',
