@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Document;
+use App\Services\Ocr\OcrService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Storage;
@@ -17,10 +18,7 @@ class ProcessDocument implements ShouldQueue
     ) {
     }
 
-    /**
-     * Execute the job.
-     */
-    public function handle(): void
+    public function handle(OcrService $ocrService): void
     {
         $document = Document::findOrFail($this->documentId);
 
@@ -36,11 +34,13 @@ class ProcessDocument implements ShouldQueue
                 );
             }
 
-            // OCR será implementado aqui.
-            // Por enquanto, apenas simulei o processamento.
+            $absolutePath = Storage::path($document->file_path);
+
+            $text = $ocrService->extractText($absolutePath);
 
             $document->update([
                 'status' => 'processed',
+                'extracted_text' => $text,
             ]);
         } catch (Throwable $exception) {
             $document->update([

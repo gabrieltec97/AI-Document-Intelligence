@@ -1,0 +1,86 @@
+[90m= [39m[34;4mApp\Models\Document[39;24m {#8163
+    [34mid[39m: [35m3[39m,
+    [34muser_id[39m: [35m1[39m,
+    [34moriginal_name[39m: [32m"[39m[32mteste.pdf[39m[32m"[39m,
+    [34mfile_path[39m: [32m"[39m[32mdocuments/6p4SYnKQdxhtWhXQyjJun74CLI449pIxpo3wAzQf.pdf[39m[32m"[39m,
+    [34mmime_type[39m: [32m"[39m[32mapplication/pdf[39m[32m"[39m,
+    [34mfile_size[39m: [35m16616[39m,
+    [34mstatus[39m: [32m"[39m[32mprocessed[39m[32m"[39m,
+    [34mextracted_text[39m: <<<[32mEOS[39m
+      [32mGABRIEL DA SILVA PEREIRA[39m
+      
+      [32mDesenvolvedor de Software / Full Stack[39m
+      
+      [32mTelefone: (21) 99746-7377 E-mail: gabrielphp20@gmail.com GitHub: github.com/gabrieltec97 | LinkedIn: linkedin.com/in/[39m
+      [32mgabrieltec[39m
+      
+      [32mOBJETIVO PROFISSIONAL[39m
+      
+      [32mDesenvolvedor de Software focado em soluções web full stack e back-end. Experiência sólida no desenvolvimento de[39m
+      [32maplicações web robustas com PHP (Laravel), JavaScript, HTML/CSS e bancos de dados SQL, utilizando Git para[39m
+      [32mversionamento e Docker em ambientes containerizados. Busco atuar na criação, manutenção e evolução de produtos com[39m
+      [32mfoco em boas práticas, testes e colaboração em equipe.[39m
+      
+      [32mHABILIDADES TÉCNICAS & FERRAMENTAS[39m
+      
+      [32mLinguagens & Front- PHP, JavaScript (ES6+), HTML5, CSS3, Livewire, Bootstrap, jQuery, Tailwind CSS.[39m
+      [32mEnd:[39m
+      
+      [32mBack-End & Laravel, Arquitetura de APIs RESTful, Node.js e Python (noções/estudos).[39m
+      [32mFrameworks:[39m
+      
+      [32mBancos de Dados & MySQL (SQL), MongoDB, Testes Automatizados com PHPUnit.[39m
+      
+      [32mTestes:[39m
+      
+      [32mDevOps & Git (GitHub/GitLab), Docker, Ambientes Linux, WordPress.[39m
+      
+      [32mFerramentas:[39m
+      
+      [32mMetodologias & Metodologias Ageis (Scrum/Kanban), Code Review, Inglês Avançado.[39m
+      [32mOutros:[39m
+      
+      [32mEXPERIENCIA PROFISSIONAL[39m
+      
+      [32mAnalista de Sistemas / Desenvolvedor Web | Cet Logistics 2025 — 2026[39m
+      [32m* Desenvolvimento, manutenção e arquitetura de aplicações web e microsserviços escaláveis utilizando PHP e criação de[39m
+      [32mAPIs RESTful.[39m
+      
+      [32m* Criação e padronização de ambientes containerizados com Docker, otimizando o fluxo de desenvolvimento e deploys.[39m
+      
+      [32m+ Participação ativa em revisões de código (code reviews), aplicação de boas práticas de programação e acompanhamento[39m
+      [32mde entregas técnicas.[39m
+      
+      [32m* Colaboração na identificação e correção de bugs em ambiente de produção, além de apoio na documentação técnica.[39m
+      [32mDesenvolvedor Full-Stack PHP / Laravel | Porter Group 2023 — 2025[39m
+      [32m* Desenvolvimento e manutenção evolutiva de aplicações web dinâmicas utilizando PHP (Laravel), JavaScript e Bootstrap.[39m
+      
+      [32m* Implementação de ambientes de desenvolvimento padronizados utilizando Docker e Git.[39m
+      [32m* Condução de revisões de código e colaboração com times multidisciplinares nas cerimônias e planejamentos das sprints.[39m
+      [32mDesenvolvedor Full-Stack | V4 Company 2019 — 2023[39m
+      [32m* Desenvolvimento e manutenção de aplicações web e sites usando Laravel, JavaScript, Bootstrap e MySQL.[39m
+      [32m* Criação de novas funcionalidades, APIs e manutenção corretiva e evolutiva em sistemas.[39m
+      [32m* Construção de interfaces dinâmicas com consumo de dados via requisições assíncronas (AJAX / REST).[39m
+      [32mEstagiário em Desenvolvimento Web | Neosyx Desenvolvimento 2018-2018[39m
+      [32m* Construção de interfaces web responsivas e acessíveis com HTMLS5, CSS3, Bootstrap e JavaScript.[39m
+      [32m* Colaboração direta em projetos internos e demandas de clientes aplicando boas práticas de desenvolvimento web.[39m
+      
+      [32mPROJETOS PESSOAIS & OPEN SOURCE[39m
+      
+      [32m+ E-Pedidos Delivery: Sistema de pedidos online com área administrativa (PHP/Laravel, JS, AJAX, SQL).[39m
+      
+      [32m+ E-Locker: Aplicação web para registro de entregas com foto e assinatura (PHP/Laravel, JavaScript).[39m
+      
+      [32m* SmartDesk: Sistema de gestão de estoque e rastreamento de insumos e responsáveis (PHP/Laravel, MySQL).[39m
+      [32m* Tech Catalog: Plataforma para gestão e administração de catálogo de dispositivos móveis.[39m
+      
+      [32mFORMAÇÃO ACADÊMICA[39m
+      
+      [32mBacharelado em Sistemas de Informação | Universidade Estácio de Sá 2015-2019[39m
+      
+      [32mFoco e especialização em desenvolvimento web e engenharia de software.[39m
+      [32mEOS[39m,
+    [34merror_message[39m: [36mnull[39m,
+    [34mcreated_at[39m: [32m"[39m[32m2026-09-22 01:20:49[39m[32m"[39m,
+    [34mupdated_at[39m: [32m"[39m[32m2026-09-22 01:20:57[39m[32m"[39m,
+  }
