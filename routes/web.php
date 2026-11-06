@@ -2,9 +2,10 @@
 
 use App\Http\Controllers\DocumentController;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 Route::get('/', function () {
-    return view('welcome');
+    return Inertia::render('Dashboard');
 });
 
 Route::middleware('auth:sanctum')->group(function () {
