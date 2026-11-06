@@ -7,6 +7,7 @@ use App\Services\Ocr\OcrService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class ProcessDocument implements ShouldQueue
@@ -20,12 +21,30 @@ class ProcessDocument implements ShouldQueue
 
     public function handle(OcrService $ocrService): void
     {
-        $document = Document::findOrFail($this->documentId);
+        $document = DB::transaction(function () {
+            $document = Document::query()
+                ->lockForUpdate()
+                ->find($this->documentId);
 
-        $document->update([
-            'status' => 'processing',
-            'error_message' => null,
-        ]);
+            if (!$document) {
+                return null;
+            }
+
+            if (in_array($document->status, ['processing', 'processed'])) {
+                return null;
+            }
+
+            $document->update([
+                'status' => 'processing',
+                'error_message' => null,
+            ]);
+
+            return $document;
+        });
+
+        if (!$document) {
+            return;
+        }
 
         try {
             if (!Storage::exists($document->file_path)) {
