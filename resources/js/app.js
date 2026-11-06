@@ -2,7 +2,7 @@ import { createApp, h } from 'vue';
 import { createInertiaApp } from '@inertiajs/vue3';
 
 createInertiaApp({
-    title: (title) => title ? `${title} - AI Document Intelligence` : 'AI Document Intelligence',
+    title: (title) => title ? `${title} - AI Document Intelligence` : 'AI Documents Intelligence',
 
     resolve: (name) => {
         const pages = import.meta.glob('./Pages/**/*.vue', { eager: true });
