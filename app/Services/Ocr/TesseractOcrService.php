@@ -7,6 +7,11 @@ use Symfony\Component\Process\Process;
 
 class TesseractOcrService implements OcrService
 {
+    public function __construct(
+        private DocxTextExtractor $docxTextExtractor
+    ) {
+    }
+
     public function extractText(string $filePath): string
     {
         if (!is_file($filePath)) {
@@ -19,8 +24,13 @@ class TesseractOcrService implements OcrService
 
         return match ($mimeType) {
             'application/pdf' => $this->extractFromPdf($filePath),
+
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            => $this->docxTextExtractor->extract($filePath),
+
             'image/jpeg',
             'image/png' => $this->extractFromImage($filePath),
+
             default => throw new RuntimeException(
                 "Tipo de arquivo não suportado pelo OCR: {$mimeType}"
             ),
