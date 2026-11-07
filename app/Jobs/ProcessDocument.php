@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Document;
 use App\Services\Chunking\ChunkingService;
+use App\Services\Embeddings\EmbeddingService;
 use App\Services\Ocr\OcrService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -17,6 +18,8 @@ class ProcessDocument implements ShouldQueue
 {
     use Queueable;
 
+    private const EMBEDDING_BATCH_SIZE = 16;
+
     public function __construct(
         public int $documentId
     ) {
@@ -24,7 +27,8 @@ class ProcessDocument implements ShouldQueue
 
     public function handle(
         OcrService $ocrService,
-        ChunkingService $chunkingService
+        ChunkingService $chunkingService,
+        EmbeddingService $embeddingService
     ): void {
         $document = DB::transaction(function () {
             $document = Document::query()
@@ -63,11 +67,28 @@ class ProcessDocument implements ShouldQueue
             // Extrai o texto do arquivo.
             $text = $ocrService->extractText($absolutePath);
 
-            // Divide o texto em blocos para futura busca semântica.
+            // Divide o texto em blocos.
             $chunks = $chunkingService->split($text);
 
-            // Salva os blocos e conclui o documento atomicamente.
-            DB::transaction(function () use ($text, $chunks) {
+            // Gera embeddings em lotes, fora da transação do banco.
+            $embeddings = [];
+
+            foreach (array_chunk($chunks, self::EMBEDDING_BATCH_SIZE) as $batch) {
+                $embeddings = array_merge(
+                    $embeddings,
+                    $embeddingService->embed($batch)
+                );
+            }
+
+            $embeddingModel = config('services.ollama.embedding_model');
+
+            // Salva os blocos, embeddings e conclui o documento atomicamente.
+            DB::transaction(function () use (
+                $text,
+                $chunks,
+                $embeddings,
+                $embeddingModel
+            ) {
                 $document = Document::query()
                     ->lockForUpdate()
                     ->find($this->documentId);
@@ -86,6 +107,9 @@ class ProcessDocument implements ShouldQueue
                         'chunk_index' => $index,
                         'content' => $content,
                         'character_count' => mb_strlen($content, 'UTF-8'),
+                        'embedding' => $embeddings[$index],
+                        'embedding_model' => $embeddingModel,
+                        'embedded_at' => now(),
                     ];
                 }
 

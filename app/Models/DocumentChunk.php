@@ -12,11 +12,16 @@ class DocumentChunk extends Model
         'chunk_index',
         'content',
         'character_count',
+        'embedding',
+        'embedding_model',
+        'embedded_at',
     ];
 
     protected $casts = [
         'chunk_index' => 'integer',
         'character_count' => 'integer',
+        'embedding' => 'array',
+        'embedded_at' => 'datetime',
     ];
 
     public function document(): BelongsTo

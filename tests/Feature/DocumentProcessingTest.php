@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Tests\TestCase;
 use Illuminate\Queue\Attributes\FailOnTimeout;
+use App\Services\Embeddings\EmbeddingService;
 
 class DocumentProcessingTest extends TestCase
 {
@@ -22,6 +23,21 @@ class DocumentProcessingTest extends TestCase
         parent::setUp();
 
         Storage::fake('local');
+
+        $this->mock(EmbeddingService::class)
+            ->shouldReceive('embed')
+            ->andReturnUsing(
+                fn (array $texts): array => $this->fakeEmbeddings($texts)
+            );
+    }
+
+    private function fakeEmbeddings(array $texts): array
+    {
+        return array_fill(
+            0,
+            count($texts),
+            array_fill(0, 1024, 0.1)
+        );
     }
 
     private function createDocument(string $status = 'uploaded'): Document
@@ -56,7 +72,7 @@ class DocumentProcessingTest extends TestCase
 
         (new ProcessDocument($document->id))->handle(
             $ocr,
-            app(\App\Services\Chunking\ChunkingService::class)
+            app(\App\Services\Chunking\ChunkingService::class), app(EmbeddingService::class)
         );
 
         $this->assertDatabaseHas('documents', [
@@ -74,6 +90,16 @@ class DocumentProcessingTest extends TestCase
         ]);
 
         $this->assertSame(1, $document->chunks()->count());
+
+        $chunk = $document->chunks()->first();
+
+        $this->assertIsArray($chunk->embedding);
+        $this->assertCount(1024, $chunk->embedding);
+        $this->assertSame(
+            config('services.ollama.embedding_model'),
+            $chunk->embedding_model
+        );
+        $this->assertNotNull($chunk->embedded_at);
     }
 
     public function test_large_document_is_saved_in_multiple_chunks(): void
@@ -98,7 +124,7 @@ class DocumentProcessingTest extends TestCase
 
         (new ProcessDocument($document->id))->handle(
             $ocr,
-            app(\App\Services\Chunking\ChunkingService::class)
+            app(\App\Services\Chunking\ChunkingService::class), app(EmbeddingService::class)
         );
 
         $chunks = $document->chunks()->get();
@@ -126,6 +152,49 @@ class DocumentProcessingTest extends TestCase
         ]);
     }
 
+    public function test_embeddings_are_generated_in_batches_of_sixteen(): void
+    {
+        $document = $this->createDocument();
+
+        Storage::disk('local')->put(
+            $document->file_path,
+            'conteudo de teste'
+        );
+
+        // Gera texto suficiente para produzir pelo menos 17 chunks.
+        $text = str_repeat('Palavra de teste para gerar chunks. ', 1000);
+
+        $ocr = $this->mock(OcrService::class);
+
+        $ocr->shouldReceive('extractText')
+            ->once()
+            ->andReturn($text);
+
+        $embeddingService = $this->mock(EmbeddingService::class);
+
+        $embeddingService->shouldReceive('embed')
+            ->twice()
+            ->withArgs(function (array $texts): bool {
+                return count($texts) >= 1 && count($texts) <= 16;
+            })
+            ->andReturnUsing(
+                fn (array $texts): array => $this->fakeEmbeddings($texts)
+            );
+
+        (new ProcessDocument($document->id))->handle(
+            $ocr,
+            app(\App\Services\Chunking\ChunkingService::class),
+            $embeddingService
+        );
+
+        $this->assertGreaterThanOrEqual(17, $document->chunks()->count());
+
+        $this->assertDatabaseHas('documents', [
+            'id' => $document->id,
+            'status' => 'processed',
+        ]);
+    }
+
     public function test_missing_file_marks_document_as_failed(): void
     {
         $document = $this->createDocument();
@@ -135,7 +204,7 @@ class DocumentProcessingTest extends TestCase
         $ocr->shouldNotReceive('extractText');
 
         try {
-            (new ProcessDocument($document->id))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class));
+            (new ProcessDocument($document->id))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class), app(EmbeddingService::class));
 
             $this->fail('Era esperada uma exceção para arquivo inexistente.');
         } catch (RuntimeException $exception) {
@@ -168,7 +237,7 @@ class DocumentProcessingTest extends TestCase
             ->andThrow(new RuntimeException('Falha simulada no OCR.'));
 
         try {
-            (new ProcessDocument($document->id))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class));
+            (new ProcessDocument($document->id))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class), app(EmbeddingService::class));
 
             $this->fail('Era esperada uma exceção do OCR.');
         } catch (RuntimeException $exception) {
@@ -193,7 +262,7 @@ class DocumentProcessingTest extends TestCase
 
         $ocr->shouldNotReceive('extractText');
 
-        (new ProcessDocument($document->id))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class));
+        (new ProcessDocument($document->id))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class), app(EmbeddingService::class));
 
         $this->assertDatabaseHas('documents', [
             'id' => $document->id,
@@ -207,7 +276,7 @@ class DocumentProcessingTest extends TestCase
 
         $ocr->shouldNotReceive('extractText');
 
-        (new ProcessDocument(999999))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class));
+        (new ProcessDocument(999999))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class), app(EmbeddingService::class));
 
         $this->assertDatabaseMissing('documents', [
             'id' => 999999,
@@ -223,7 +292,7 @@ class DocumentProcessingTest extends TestCase
 
         $ocr->shouldNotReceive('extractText');
 
-        (new ProcessDocument($document->id))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class));
+        (new ProcessDocument($document->id))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class), app(EmbeddingService::class));
 
         $this->assertDatabaseHas('documents', [
             'id' => $document->id,
@@ -267,7 +336,7 @@ class DocumentProcessingTest extends TestCase
 
         (new ProcessDocument($document->id))->handle(
             $ocr,
-            app(\App\Services\Chunking\ChunkingService::class)
+            app(\App\Services\Chunking\ChunkingService::class), app(EmbeddingService::class)
         );
 
         $this->assertDatabaseHas('documents', [
