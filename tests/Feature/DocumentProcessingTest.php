@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\ProcessDocument;
 use App\Models\Document;
+use App\Models\DocumentChunk;
 use App\Models\User;
 use App\Services\Ocr\OcrService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -53,13 +54,75 @@ class DocumentProcessingTest extends TestCase
             ->with(Storage::path($document->file_path))
             ->andReturn('Texto extraído do documento.');
 
-        (new ProcessDocument($document->id))->handle($ocr);
+        (new ProcessDocument($document->id))->handle(
+            $ocr,
+            app(\App\Services\Chunking\ChunkingService::class)
+        );
 
         $this->assertDatabaseHas('documents', [
             'id' => $document->id,
             'status' => 'processed',
             'extracted_text' => 'Texto extraído do documento.',
             'error_message' => null,
+        ]);
+
+        $this->assertDatabaseHas('document_chunks', [
+            'document_id' => $document->id,
+            'chunk_index' => 0,
+            'content' => 'Texto extraído do documento.',
+            'character_count' => mb_strlen('Texto extraído do documento.', 'UTF-8'),
+        ]);
+
+        $this->assertSame(1, $document->chunks()->count());
+    }
+
+    public function test_large_document_is_saved_in_multiple_chunks(): void
+    {
+        $document = $this->createDocument();
+
+        Storage::disk('local')->put(
+            $document->file_path,
+            'conteudo de teste'
+        );
+
+        $text = implode(' ', array_map(
+            fn (int $number) => "Palavra{$number}",
+            range(1, 400)
+        ));
+
+        $ocr = $this->mock(OcrService::class);
+
+        $ocr->shouldReceive('extractText')
+            ->once()
+            ->andReturn($text);
+
+        (new ProcessDocument($document->id))->handle(
+            $ocr,
+            app(\App\Services\Chunking\ChunkingService::class)
+        );
+
+        $chunks = $document->chunks()->get();
+
+        $this->assertGreaterThan(1, $chunks->count());
+
+        $this->assertSame(
+            range(0, $chunks->count() - 1),
+            $chunks->pluck('chunk_index')->all()
+        );
+
+        foreach ($chunks as $chunk) {
+            $this->assertLessThanOrEqual(1500, $chunk->character_count);
+
+            $this->assertSame(
+                mb_strlen($chunk->content, 'UTF-8'),
+                $chunk->character_count
+            );
+        }
+
+        $this->assertDatabaseHas('documents', [
+            'id' => $document->id,
+            'status' => 'processed',
+            'extracted_text' => $text,
         ]);
     }
 
@@ -72,7 +135,7 @@ class DocumentProcessingTest extends TestCase
         $ocr->shouldNotReceive('extractText');
 
         try {
-            (new ProcessDocument($document->id))->handle($ocr);
+            (new ProcessDocument($document->id))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class));
 
             $this->fail('Era esperada uma exceção para arquivo inexistente.');
         } catch (RuntimeException $exception) {
@@ -105,7 +168,7 @@ class DocumentProcessingTest extends TestCase
             ->andThrow(new RuntimeException('Falha simulada no OCR.'));
 
         try {
-            (new ProcessDocument($document->id))->handle($ocr);
+            (new ProcessDocument($document->id))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class));
 
             $this->fail('Era esperada uma exceção do OCR.');
         } catch (RuntimeException $exception) {
@@ -130,7 +193,7 @@ class DocumentProcessingTest extends TestCase
 
         $ocr->shouldNotReceive('extractText');
 
-        (new ProcessDocument($document->id))->handle($ocr);
+        (new ProcessDocument($document->id))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class));
 
         $this->assertDatabaseHas('documents', [
             'id' => $document->id,
@@ -144,7 +207,7 @@ class DocumentProcessingTest extends TestCase
 
         $ocr->shouldNotReceive('extractText');
 
-        (new ProcessDocument(999999))->handle($ocr);
+        (new ProcessDocument(999999))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class));
 
         $this->assertDatabaseMissing('documents', [
             'id' => 999999,
@@ -160,7 +223,7 @@ class DocumentProcessingTest extends TestCase
 
         $ocr->shouldNotReceive('extractText');
 
-        (new ProcessDocument($document->id))->handle($ocr);
+        (new ProcessDocument($document->id))->handle($ocr, app(\App\Services\Chunking\ChunkingService::class));
 
         $this->assertDatabaseHas('documents', [
             'id' => $document->id,
@@ -176,6 +239,20 @@ class DocumentProcessingTest extends TestCase
             'error_message' => 'Erro anterior no processamento.',
         ]);
 
+        // Simula chunks de uma tentativa anterior.
+        $document->chunks()->createMany([
+            [
+                'chunk_index' => 0,
+                'content' => 'Texto antigo do documento.',
+                'character_count' => mb_strlen('Texto antigo do documento.', 'UTF-8'),
+            ],
+            [
+                'chunk_index' => 1,
+                'content' => 'Segundo bloco antigo.',
+                'character_count' => mb_strlen('Segundo bloco antigo.', 'UTF-8'),
+            ],
+        ]);
+
         Storage::disk('local')->put(
             $document->file_path,
             'conteudo de teste'
@@ -188,7 +265,10 @@ class DocumentProcessingTest extends TestCase
             ->with(Storage::path($document->file_path))
             ->andReturn('Texto extraído após nova tentativa.');
 
-        (new ProcessDocument($document->id))->handle($ocr);
+        (new ProcessDocument($document->id))->handle(
+            $ocr,
+            app(\App\Services\Chunking\ChunkingService::class)
+        );
 
         $this->assertDatabaseHas('documents', [
             'id' => $document->id,
@@ -196,6 +276,24 @@ class DocumentProcessingTest extends TestCase
             'extracted_text' => 'Texto extraído após nova tentativa.',
             'error_message' => null,
         ]);
+
+        $this->assertDatabaseMissing('document_chunks', [
+            'document_id' => $document->id,
+            'content' => 'Texto antigo do documento.',
+        ]);
+
+        $this->assertDatabaseMissing('document_chunks', [
+            'document_id' => $document->id,
+            'content' => 'Segundo bloco antigo.',
+        ]);
+
+        $this->assertDatabaseHas('document_chunks', [
+            'document_id' => $document->id,
+            'chunk_index' => 0,
+            'content' => 'Texto extraído após nova tentativa.',
+        ]);
+
+        $this->assertSame(1, $document->chunks()->count());
     }
 
     public function test_failed_callback_marks_processing_document_as_failed(): void

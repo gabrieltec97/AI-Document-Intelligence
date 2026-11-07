@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Document;
+use App\Services\Chunking\ChunkingService;
 use App\Services\Ocr\OcrService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -21,8 +22,10 @@ class ProcessDocument implements ShouldQueue
     ) {
     }
 
-    public function handle(OcrService $ocrService): void
-    {
+    public function handle(
+        OcrService $ocrService,
+        ChunkingService $chunkingService
+    ): void {
         $document = DB::transaction(function () {
             $document = Document::query()
                 ->lockForUpdate()
@@ -57,12 +60,45 @@ class ProcessDocument implements ShouldQueue
 
             $absolutePath = Storage::path($document->file_path);
 
+            // Extrai o texto do arquivo.
             $text = $ocrService->extractText($absolutePath);
 
-            $document->update([
-                'status' => 'processed',
-                'extracted_text' => $text,
-            ]);
+            // Divide o texto em blocos para futura busca semântica.
+            $chunks = $chunkingService->split($text);
+
+            // Salva os blocos e conclui o documento atomicamente.
+            DB::transaction(function () use ($text, $chunks) {
+                $document = Document::query()
+                    ->lockForUpdate()
+                    ->find($this->documentId);
+
+                if (!$document || $document->status !== 'processing') {
+                    return;
+                }
+
+                // Remove blocos anteriores em caso de reprocessamento.
+                $document->chunks()->delete();
+
+                $chunkRecords = [];
+
+                foreach ($chunks as $index => $content) {
+                    $chunkRecords[] = [
+                        'chunk_index' => $index,
+                        'content' => $content,
+                        'character_count' => mb_strlen($content, 'UTF-8'),
+                    ];
+                }
+
+                if ($chunkRecords !== []) {
+                    $document->chunks()->createMany($chunkRecords);
+                }
+
+                $document->update([
+                    'status' => 'processed',
+                    'extracted_text' => $text,
+                    'error_message' => null,
+                ]);
+            });
         } catch (Throwable $exception) {
             $document->update([
                 'status' => 'failed',
