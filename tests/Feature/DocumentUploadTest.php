@@ -44,4 +44,68 @@ class DocumentUploadTest extends TestCase
         $this->assertArrayNotHasKey('error_message', $document);
         $this->assertArrayNotHasKey('extracted_text', $document);
     }
+
+
+    public function test_upload_rejects_unsupported_file_types(): void
+    {
+        Storage::fake('local');
+        Queue::fake();
+
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/documents', [
+                'document' => UploadedFile::fake()->create(
+                    'arquivo.txt',
+                    100,
+                    'text/plain'
+                ),
+            ]);
+
+        $response->assertUnprocessable()
+            ->assertJsonValidationErrors('document');
+
+        $this->assertDatabaseCount('documents', 0);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_upload_requires_a_file(): void
+    {
+        Storage::fake('local');
+        Queue::fake();
+
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/documents', []);
+
+        $response->assertUnprocessable()
+            ->assertJsonValidationErrors('document');
+
+        $this->assertDatabaseCount('documents', 0);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_upload_rejects_files_larger_than_20_mb(): void
+    {
+        Storage::fake('local');
+        Queue::fake();
+
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson('/api/documents', [
+                'document' => UploadedFile::fake()->create(
+                    'documento-grande.pdf',
+                    20481,
+                    'application/pdf'
+                ),
+            ]);
+
+        $response->assertUnprocessable()
+            ->assertJsonValidationErrors('document');
+
+        $this->assertDatabaseCount('documents', 0);
+        Queue::assertNothingPushed();
+    }
 }

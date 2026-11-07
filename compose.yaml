@@ -36,7 +36,7 @@ services:
             - redis
             - --queue=default
             - --tries=3
-            - --timeout=120
+            - --timeout=150
         environment:
             WWWUSER: '${WWWUSER}'
             LARAVEL_SAIL: 1

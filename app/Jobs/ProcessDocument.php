@@ -9,7 +9,9 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use Throwable;
+use Illuminate\Queue\Attributes\FailOnTimeout;
 
+#[FailOnTimeout]
 class ProcessDocument implements ShouldQueue
 {
     use Queueable;
@@ -69,5 +71,24 @@ class ProcessDocument implements ShouldQueue
 
             throw $exception;
         }
+    }
+
+    public function failed(?Throwable $exception): void
+    {
+        DB::transaction(function () use ($exception) {
+            $document = Document::query()
+                ->lockForUpdate()
+                ->find($this->documentId);
+
+            if (!$document || $document->status === 'processed') {
+                return;
+            }
+
+            $document->update([
+                'status' => 'failed',
+                'error_message' => $exception?->getMessage()
+                    ?? 'O processamento do documento falhou definitivamente.',
+            ]);
+        });
     }
 }
