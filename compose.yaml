@@ -29,6 +29,7 @@ services:
             - selenium
     queue:
         image: 'sail-8.5/app'
+        restart: unless-stopped
         command:
             - php
             - artisan
@@ -45,8 +46,11 @@ services:
         networks:
             - sail
         depends_on:
-            - mysql
-            - redis
+            mysql:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+
     mysql:
         image: 'mysql:8.4'
         ports:
