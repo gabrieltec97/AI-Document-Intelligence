@@ -24,6 +24,7 @@ class SemanticSearchService
         int $limit = 5
     ): Collection {
         $chunks = DocumentChunk::query()
+            ->with('document:id,original_name')
             ->whereHas('document', function ($documentQuery) use ($user) {
                 $documentQuery
                     ->where('user_id', $user->id)

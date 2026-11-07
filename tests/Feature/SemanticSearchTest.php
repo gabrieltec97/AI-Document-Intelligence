@@ -25,7 +25,7 @@ class SemanticSearchTest extends TestCase
             'status' => 'processed',
         ]);
     }
-    
+
     private function createChunk(
         Document $document,
         string $content,
