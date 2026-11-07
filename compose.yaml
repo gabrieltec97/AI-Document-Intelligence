@@ -27,6 +27,26 @@ services:
             - meilisearch
             - mailpit
             - selenium
+    queue:
+        image: 'sail-8.5/app'
+        command:
+            - php
+            - artisan
+            - queue:work
+            - redis
+            - --queue=default
+            - --tries=3
+            - --timeout=120
+        environment:
+            WWWUSER: '${WWWUSER}'
+            LARAVEL_SAIL: 1
+        volumes:
+            - '.:/var/www/html'
+        networks:
+            - sail
+        depends_on:
+            - mysql
+            - redis
     mysql:
         image: 'mysql:8.4'
         ports:

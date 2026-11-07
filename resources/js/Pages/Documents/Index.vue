@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import AppLayout from '../../Layouts/AppLayout.vue';
 
 const documents = ref([]);
@@ -11,6 +11,9 @@ const error = ref('');
 const success = ref('');
 const selectedDocument = ref(null);
 const loadingDetails = ref(false);
+const currentUrl = ref('/documents/data');
+let pollingTimer = null;
+let pollingInProgress = false;
 
 const fileInput = ref(null);
 
@@ -24,7 +27,58 @@ function headers() {
     };
 }
 
+function hasPendingDocuments() {
+    return documents.value.some(document =>
+        ['uploaded', 'processing'].includes(document.status)
+    );
+}
+
+function stopStatusPolling() {
+    if (pollingTimer !== null) {
+        clearInterval(pollingTimer);
+        pollingTimer = null;
+    }
+}
+
+function startStatusPolling() {
+    if (pollingTimer !== null || !hasPendingDocuments()) {
+        return;
+    }
+
+    pollingTimer = setInterval(refreshDocuments, 5000);
+}
+async function refreshDocuments() {
+    if (pollingInProgress) return;
+
+    pollingInProgress = true;
+
+    try {
+        const response = await fetch(currentUrl.value, {
+            headers: headers(),
+            credentials: 'same-origin',
+        });
+
+        if (!response.ok) return;
+
+        const result = await response.json();
+
+        documents.value = result.data;
+        pagination.value = result.meta;
+
+        if (hasPendingDocuments()) {
+            startStatusPolling();
+        } else {
+            stopStatusPolling();
+        }
+    } catch {
+        // Uma falha temporária será tentada novamente no próximo ciclo.
+    } finally {
+        pollingInProgress = false;
+    }
+}
+
 async function loadDocuments(url = '/documents/data') {
+    currentUrl.value = url;
     loading.value = true;
     error.value = '';
 
@@ -42,6 +96,12 @@ async function loadDocuments(url = '/documents/data') {
 
         documents.value = result.data;
         pagination.value = result.meta;
+
+        if (hasPendingDocuments()) {
+            startStatusPolling();
+        } else {
+            stopStatusPolling();
+        }
     } catch (err) {
         error.value = err.message;
     } finally {
@@ -184,6 +244,10 @@ function statusClass(status) {
 }
 
 onMounted(() => loadDocuments());
+
+onUnmounted(() => {
+    stopStatusPolling();
+});
 </script>
 
 <template>
