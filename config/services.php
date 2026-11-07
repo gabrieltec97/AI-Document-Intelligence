@@ -38,6 +38,8 @@ return [
     'ollama' => [
         'base_url' => env('OLLAMA_BASE_URL', 'http://host.docker.internal:11434'),
         'embedding_model' => env('OLLAMA_EMBEDDING_MODEL', 'bge-m3'),
+        'generation_model' => env('OLLAMA_GENERATION_MODEL', 'qwen2.5:3b'),
+        'generation_timeout' => (int) env('OLLAMA_GENERATION_TIMEOUT', 180),
     ],
 
 ];

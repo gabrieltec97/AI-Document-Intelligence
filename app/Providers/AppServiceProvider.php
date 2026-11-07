@@ -7,6 +7,8 @@ use App\Services\Embeddings\OllamaEmbeddingService;
 use App\Services\Ocr\OcrService;
 use App\Services\Ocr\TesseractOcrService;
 use Illuminate\Support\ServiceProvider;
+use App\Services\Generation\GenerationService;
+use App\Services\Generation\OllamaGenerationService;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -20,6 +22,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             EmbeddingService::class,
             OllamaEmbeddingService::class
+        );
+
+        $this->app->bind(
+            GenerationService::class,
+            OllamaGenerationService::class
         );
     }
 
