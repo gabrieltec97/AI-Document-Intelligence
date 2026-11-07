@@ -4,6 +4,18 @@ import { Link, router, usePage } from '@inertiajs/vue3';
 
 const page = usePage();
 
+const pageTitle = computed(() => {
+    if (page.url.startsWith('/chat')) {
+        return 'Chat com documentos';
+    }
+
+    if (page.url.startsWith('/documents')) {
+        return 'Documentos';
+    }
+
+    return 'Visão geral';
+});
+
 const user = computed(() => page.props.auth?.user);
 
 const userInitials = computed(() => {
@@ -64,6 +76,17 @@ function logout() {
                     <span>📄</span>
                     Documentos
                 </Link>
+
+                <Link
+                    href="/chat"
+                    :class="page.url.startsWith('/chat')
+        ? 'bg-indigo-600/15 text-indigo-400'
+        : 'text-slate-400 hover:bg-slate-800 hover:text-white'"
+                    class="flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition"
+                >
+                    <span>✦</span>
+                    Chat com documentos
+                </Link>
             </nav>
 
 
@@ -81,7 +104,7 @@ function logout() {
             <header class="flex min-h-20 items-center justify-between border-b border-slate-800 bg-slate-900/50 px-5 py-4 sm:px-8">
                 <div>
                     <p class="text-sm text-slate-400">Área de trabalho</p>
-                    <h2 class="text-lg font-semibold">Visão geral</h2>
+                    <h2 class="text-lg font-semibold">{{ pageTitle }}</h2>
                 </div>
 
                 <div class="flex items-center gap-4">

@@ -35,4 +35,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/documents', [DocumentController::class, 'store'])
         ->middleware('auth:sanctum')
         ->name('documents.store');
+
+    // Chat com documentos
+    Route::get('/chat', function () {
+        return Inertia::render('Chat/Index');
+    })->name('chat.index');
 });

@@ -16,7 +16,7 @@ class OllamaGenerationService implements GenerationService
         }
 
         $response = Http::baseUrl(config('services.ollama.base_url'))
-            ->timeout(180)
+            ->timeout(config('services.ollama.generation_timeout'))
             ->post('/api/generate', [
                 'model' => config('services.ollama.generation_model'),
                 'prompt' => $prompt,
