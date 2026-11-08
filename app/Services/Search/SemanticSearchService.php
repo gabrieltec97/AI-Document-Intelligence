@@ -64,8 +64,8 @@ class SemanticSearchService
         // Gera o embedding da pergunta.
         $queryEmbedding = $this->embeddingService->embed([$query])[0];
 
-        // Calcula a similaridade e retorna os chunks mais relevantes.
-        return $chunks
+        // Calcula a similaridade e ordena os chunks por relevância.
+        $rankedChunks = $chunks
             ->map(function (DocumentChunk $chunk) use ($queryEmbedding) {
                 $chunk->similarity = $this->cosineSimilarity->calculate(
                     $queryEmbedding,
@@ -75,7 +75,47 @@ class SemanticSearchService
                 return $chunk;
             })
             ->sortByDesc('similarity')
+            ->values();
+
+        // Sem múltiplas empresas, mantém a seleção original.
+        if ($matchingCompanies->count() <= 1 || $limit <= 1) {
+            return $rankedChunks
+                ->take($limit)
+                ->values();
+        }
+
+        // Reserva o chunk mais relevante de cada empresa mencionada.
+        $companyRepresentatives = $matchingCompanies
+            ->map(
+                fn (string $company) => $rankedChunks->first(
+                    fn (DocumentChunk $chunk) => $chunk->company === $company
+                )
+            )
+            ->filter()
+            ->sortByDesc('similarity')
             ->take($limit)
+            ->values();
+
+        // Identifica os chunks já selecionados.
+        $selectedIds = $companyRepresentatives
+            ->pluck('id')
+            ->all();
+
+        // Preenche as vagas restantes com os chunks mais relevantes.
+        $remainingChunks = $rankedChunks
+            ->reject(
+                fn (DocumentChunk $chunk) => in_array(
+                    $chunk->id,
+                    $selectedIds,
+                    true
+                )
+            )
+            ->take(max(0, $limit - $companyRepresentatives->count()));
+
+        // Retorna todos os resultados em ordem de relevância.
+        return $companyRepresentatives
+            ->concat($remainingChunks)
+            ->sortByDesc('similarity')
             ->values();
     }
 }

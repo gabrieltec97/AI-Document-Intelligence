@@ -280,6 +280,73 @@ class SemanticSearchTest extends TestCase
         );
     }
 
+    public function test_search_preserves_each_mentioned_company_within_result_limit(): void
+    {
+        $user = User::factory()->create();
+        $document = $this->createDocument($user, 'curriculo.pdf');
+
+        $cetFirst = $this->createChunk(
+            $document,
+            'Primeira experiência na Cet Logistics.',
+            [1.0, 0.0, 0.0],
+            'professional_experience',
+            'Cet Logistics'
+        );
+
+        $this->createChunk(
+            $document,
+            'Segunda experiência na Cet Logistics.',
+            [0.99, 0.01, 0.0],
+            'professional_experience',
+            'Cet Logistics'
+        );
+
+        $this->createChunk(
+            $document,
+            'Terceira experiência na Cet Logistics.',
+            [0.98, 0.02, 0.0],
+            'professional_experience',
+            'Cet Logistics'
+        );
+
+        $porter = $this->createChunk(
+            $document,
+            'Experiência profissional na Porter Group.',
+            [0.8, 0.6, 0.0],
+            'professional_experience',
+            'Porter Group'
+        );
+
+        $embeddingService = $this->mock(EmbeddingService::class);
+
+        $embeddingService->shouldReceive('embed')
+            ->once()
+            ->andReturn([[1.0, 0.0, 0.0]]);
+
+        $results = app(SemanticSearchService::class)->search(
+            $user,
+            'Compare as experiências na Cet Logistics e na Porter Group.',
+            2
+        );
+
+        $this->assertCount(2, $results);
+
+        $companies = $results->pluck('company')->all();
+
+        $this->assertContains('Cet Logistics', $companies);
+        $this->assertContains('Porter Group', $companies);
+
+        $this->assertContains(
+            $porter->id,
+            $results->pluck('id')->all()
+        );
+
+        $this->assertContains(
+            $cetFirst->id,
+            $results->pluck('id')->all()
+        );
+    }
+
     public function test_search_keeps_general_semantic_search_without_company_mention(): void
     {
         $user = User::factory()->create();

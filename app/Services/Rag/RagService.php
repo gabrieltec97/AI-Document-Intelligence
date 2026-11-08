@@ -5,14 +5,14 @@ namespace App\Services\Rag;
 use App\Models\User;
 use App\Services\Generation\GenerationService;
 use App\Services\Search\SemanticSearchService;
+use Illuminate\Support\Collection;
 
 class RagService
 {
     public function __construct(
         private SemanticSearchService $searchService,
         private GenerationService $generationService
-    ) {
-    }
+    ) {}
 
     /**
      * Responde uma pergunta utilizando os documentos do usuário.
@@ -37,6 +37,8 @@ class RagService
                     'has_citations' => false,
                     'used' => [],
                     'invalid' => [],
+                    'uncited_items' => [],
+                    'abstained' => true,
                 ],
             ];
         }
@@ -167,7 +169,41 @@ class RagService
             'RESPOSTA:',
         ]);
 
-        $answer = $this->generationService->generate($prompt);
+        if ($this->isProfessionalComparison($question, $chunks)) {
+            $answer = $this->buildProfessionalComparison($chunks);
+
+            $citationValidation = $this->validateCitations(
+                $answer,
+                $chunks->count()
+            );
+        } else {
+            $answer = $this->generationService->generate($prompt);
+
+            $citationValidation = $this->validateCitations(
+                $answer,
+                $chunks->count()
+            );
+
+            if (
+                ! $citationValidation['has_citations']
+                && $chunks->count() === 1
+            ) {
+                $answer = $this->addSingleSourceCitation($answer);
+
+                $citationValidation = $this->validateCitations(
+                    $answer,
+                    $chunks->count()
+                );
+            }
+        }
+
+        if (
+            ! $citationValidation['has_citations']
+            && $this->isExplicitAbstention($answer)
+        ) {
+            $citationValidation['valid'] = true;
+            $citationValidation['abstained'] = true;
+        }
 
         $sources = $chunks->map(function ($chunk) {
             return [
@@ -182,20 +218,183 @@ class RagService
         return [
             'answer' => $answer,
             'sources' => $sources,
-            'citation_validation' => $this->validateCitations(
-                $answer,
-                count($sources)
-            ),
+            'citation_validation' => $citationValidation,
         ];
     }
 
+    /**
+     * Identifica perguntas comparativas entre experiências profissionais.
+     */
+    private function isProfessionalComparison(
+        string $question,
+        Collection $chunks
+    ): bool {
+        $isComparison = preg_match(
+            '/\b(compare|comparar|comparação|comparativo|comparativa)\b/ui',
+            $question
+        );
+
+        if (! $isComparison) {
+            return false;
+        }
+
+        $companies = $chunks
+            ->filter(
+                fn ($chunk) => $chunk->section === 'professional_experience'
+                    && ! empty($chunk->company)
+            )
+            ->pluck('company')
+            ->unique()
+            ->values();
+
+        return $companies->count() >= 2;
+    }
+
+    private function buildProfessionalComparison(
+        Collection $chunks
+    ): string {
+        $groups = [];
+
+        foreach ($chunks as $index => $chunk) {
+            if (
+                $chunk->section !== 'professional_experience'
+                || empty($chunk->company)
+            ) {
+                continue;
+            }
+
+            $groups[$chunk->company][] = [
+                'chunk' => $chunk,
+                'source_number' => $index + 1,
+            ];
+        }
+
+        $sections = [];
+
+        foreach ($groups as $company => $experiences) {
+            $section = "### {$company}";
+
+            foreach ($experiences as $experience) {
+                $chunk = $experience['chunk'];
+                $sourceNumber = $experience['source_number'];
+
+                if (! empty($chunk->position)) {
+                    $section .= "\n\n**Cargo:** {$chunk->position} [{$sourceNumber}]";
+                }
+
+                $content = trim($chunk->content);
+                $lines = preg_split('/\r\n|\r|\n/', $content);
+
+                $items = [];
+                $currentItem = null;
+                $currentIsBullet = false;
+
+                foreach ($lines as $line) {
+                    $line = trim($line);
+
+                    if ($line === '') {
+                        if ($currentItem !== null) {
+                            $items[] = [
+                                'content' => $currentItem,
+                                'is_bullet' => $currentIsBullet,
+                            ];
+
+                            $currentItem = null;
+                            $currentIsBullet = false;
+                        }
+
+                        continue;
+                    }
+
+                    if (preg_match('/^[-*+]\s+(.+)$/u', $line, $matches)) {
+                        if ($currentItem !== null) {
+                            $items[] = [
+                                'content' => $currentItem,
+                                'is_bullet' => $currentIsBullet,
+                            ];
+                        }
+
+                        $currentItem = trim($matches[1]);
+                        $currentIsBullet = true;
+
+                        continue;
+                    }
+
+                    if ($currentItem === null) {
+                        $currentItem = $line;
+                        $currentIsBullet = false;
+                    } else {
+                        $currentItem .= ' '.$line;
+                    }
+                }
+
+                if ($currentItem !== null) {
+                    $items[] = [
+                        'content' => $currentItem,
+                        'is_bullet' => $currentIsBullet,
+                    ];
+                }
+
+                foreach ($items as $item) {
+                    $itemContent = preg_replace(
+                        '/\s+/',
+                        ' ',
+                        trim($item['content'])
+                    );
+
+                    if ($itemContent === '') {
+                        continue;
+                    }
+
+                    $prefix = $item['is_bullet'] ? '- ' : '';
+
+                    $section .= "\n{$prefix}{$itemContent} [{$sourceNumber}]";
+                }
+            }
+
+            $sections[] = $section;
+        }
+
+        return implode("\n\n", $sections);
+    }
 
     /**
-     * Valida estruturalmente as referências utilizadas na resposta.
-     *
-     * Uma resposta só é considerada válida quando possui pelo menos
-     * uma referência e todas as referências utilizadas existem.
+     * Adiciona uma referência quando existe somente uma fonte disponível.
      */
+    private function addSingleSourceCitation(string $answer): string
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $answer);
+
+        $result = [];
+
+        foreach ($lines as $line) {
+            $trimmedLine = trim($line);
+
+            if (
+                $trimmedLine !== ''
+                && preg_match('/^([-*+]|\d+[.)])\s+/', $trimmedLine)
+                && ! preg_match('/\[\d+\]/', $trimmedLine)
+            ) {
+                $line .= ' [1]';
+            }
+
+            $result[] = $line;
+        }
+
+        return implode("\n", $result);
+    }
+
+    /**
+     * Identifica respostas explícitas de ausência de informação documental.
+     */
+    private function isExplicitAbstention(string $answer): bool
+    {
+        return preg_match(
+            '/^\s*não\s+(?:(?:foram\s+encontrad[oa]s?|encontrei)\s+|há\s+)(?:nenhuma\s+)?(?:informações?|registros?|dados?|referências?)\b.*\b(?:currículo|documento|arquivo|fontes?|contexto)\b.*[.!]?\s*$/isu',
+            trim($answer)
+        ) === 1;
+    }
+
     private function validateCitations(
         string $answer,
         int $sourceCount
@@ -208,17 +407,39 @@ class RagService
 
         $invalid = array_values(array_filter(
             $used,
-            fn (int $number): bool =>
-                $number < 1 || $number > $sourceCount
+            fn (int $number): bool => $number < 1 || $number > $sourceCount
         ));
 
-        $hasCitations = !empty($used);
+        $uncitedItems = [];
+
+        $lines = preg_split('/\r\n|\r|\n/', $answer);
+
+        foreach ($lines as $line) {
+            $trimmedLine = trim($line);
+
+            $isListItem = preg_match(
+                '/^([-*+]|\d+[.)])\s+/',
+                $trimmedLine
+            );
+
+            $hasCitation = preg_match('/\[\d+\]/', $trimmedLine);
+
+            if ($isListItem && ! $hasCitation) {
+                $uncitedItems[] = $trimmedLine;
+            }
+        }
+
+        $hasCitations = ! empty($used);
 
         return [
-            'valid' => $hasCitations && empty($invalid),
+            'valid' => $hasCitations
+                && empty($invalid)
+                && empty($uncitedItems),
             'has_citations' => $hasCitations,
             'used' => $used,
             'invalid' => $invalid,
+            'uncited_items' => $uncitedItems,
+            'abstained' => false,
         ];
     }
 }
