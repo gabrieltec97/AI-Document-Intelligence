@@ -29,7 +29,10 @@ class SemanticSearchTest extends TestCase
     private function createChunk(
         Document $document,
         string $content,
-        array $embedding
+        array $embedding,
+        ?string $section = null,
+        ?string $company = null,
+        ?string $position = null
     ): DocumentChunk {
         $chunkIndex = $document->chunks()->count();
 
@@ -37,6 +40,9 @@ class SemanticSearchTest extends TestCase
             'document_id' => $document->id,
             'chunk_index' => $chunkIndex,
             'content' => $content,
+            'section' => $section,
+            'company' => $company,
+            'position' => $position,
             'character_count' => mb_strlen($content, 'UTF-8'),
             'embedding' => $embedding,
             'embedding_model' => 'bge-m3',
@@ -169,5 +175,154 @@ class SemanticSearchTest extends TestCase
         );
 
         $this->assertCount(3, $results);
+    }
+
+    public function test_search_filters_chunks_by_mentioned_company(): void
+    {
+        $user = User::factory()->create();
+        $document = $this->createDocument($user, 'curriculo.pdf');
+
+        $cetChunk = $this->createChunk(
+            $document,
+            'Experiência profissional na Cet Logistics.',
+            [1.0, 0.0, 0.0],
+            'professional_experience',
+            'Cet Logistics',
+            'Analista de Sistemas / Desenvolvedor Web'
+        );
+
+        $this->createChunk(
+            $document,
+            'Experiência profissional na Porter Group.',
+            [1.0, 0.0, 0.0],
+            'professional_experience',
+            'Porter Group',
+            'Desenvolvedor Full-Stack PHP / Laravel'
+        );
+
+        $this->createChunk(
+            $document,
+            'Habilidades técnicas: PHP, Laravel e Docker.',
+            [1.0, 0.0, 0.0],
+            'technical_skills'
+        );
+
+        $embeddingService = $this->mock(EmbeddingService::class);
+
+        $embeddingService->shouldReceive('embed')
+            ->once()
+            ->andReturn([[1.0, 0.0, 0.0]]);
+
+        $results = app(SemanticSearchService::class)->search(
+            $user,
+            'Quais atividades foram realizadas na Cet Logistics?'
+        );
+
+        $this->assertCount(1, $results);
+        $this->assertSame($cetChunk->id, $results->first()->id);
+        $this->assertSame('Cet Logistics', $results->first()->company);
+        $this->assertSame(
+            'professional_experience',
+            $results->first()->section
+        );
+    }
+
+    public function test_search_filters_by_multiple_mentioned_companies(): void
+    {
+        $user = User::factory()->create();
+        $document = $this->createDocument($user, 'curriculo.pdf');
+
+        $cetChunk = $this->createChunk(
+            $document,
+            'Experiência na Cet Logistics.',
+            [1.0, 0.0, 0.0],
+            'professional_experience',
+            'Cet Logistics'
+        );
+
+        $porterChunk = $this->createChunk(
+            $document,
+            'Experiência na Porter Group.',
+            [0.9, 0.1, 0.0],
+            'professional_experience',
+            'Porter Group'
+        );
+
+        $this->createChunk(
+            $document,
+            'Experiência na V4 Company.',
+            [1.0, 0.0, 0.0],
+            'professional_experience',
+            'V4 Company'
+        );
+
+        $embeddingService = $this->mock(EmbeddingService::class);
+
+        $embeddingService->shouldReceive('embed')
+            ->once()
+            ->andReturn([[1.0, 0.0, 0.0]]);
+
+        $results = app(SemanticSearchService::class)->search(
+            $user,
+            'Compare as experiências na Cet Logistics e na Porter Group.'
+        );
+
+        $this->assertCount(2, $results);
+
+        $resultIds = $results->pluck('id')->all();
+
+        $this->assertContains($cetChunk->id, $resultIds);
+        $this->assertContains($porterChunk->id, $resultIds);
+
+        $this->assertEqualsCanonicalizing(
+            ['Cet Logistics', 'Porter Group'],
+            $results->pluck('company')->all()
+        );
+    }
+
+    public function test_search_keeps_general_semantic_search_without_company_mention(): void
+    {
+        $user = User::factory()->create();
+        $document = $this->createDocument($user, 'curriculo.pdf');
+
+        $this->createChunk(
+            $document,
+            'Experiência na Cet Logistics.',
+            [1.0, 0.0, 0.0],
+            'professional_experience',
+            'Cet Logistics'
+        );
+
+        $this->createChunk(
+            $document,
+            'Habilidades técnicas: PHP, Laravel e Docker.',
+            [0.9, 0.1, 0.0],
+            'technical_skills'
+        );
+
+        $this->createChunk(
+            $document,
+            'Projeto pessoal utilizando PHP.',
+            [0.0, 1.0, 0.0],
+            'projects'
+        );
+
+        $embeddingService = $this->mock(EmbeddingService::class);
+
+        $embeddingService->shouldReceive('embed')
+            ->once()
+            ->andReturn([[1.0, 0.0, 0.0]]);
+
+        $results = app(SemanticSearchService::class)->search(
+            $user,
+            'Quais tecnologias aparecem no currículo?'
+        );
+
+        $this->assertCount(3, $results);
+
+        $this->assertSame(
+            'Cet Logistics',
+            $results->first()->company
+        );
     }
 }

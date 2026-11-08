@@ -67,8 +67,11 @@ class ProcessDocument implements ShouldQueue
             // Extrai o texto do arquivo.
             $text = $ocrService->extractText($absolutePath);
 
-            // Divide o texto em blocos.
-            $chunks = $chunkingService->split($text);
+            // Divide o texto em blocos e identifica seus metadados.
+            $chunkData = $chunkingService->splitWithMetadata($text);
+
+            // Extrai somente o conteúdo para gerar os embeddings.
+            $chunks = array_column($chunkData, 'content');
 
             // Gera embeddings em lotes, fora da transação do banco.
             $embeddings = [];
@@ -82,10 +85,10 @@ class ProcessDocument implements ShouldQueue
 
             $embeddingModel = config('services.ollama.embedding_model');
 
-            // Salva os blocos, embeddings e conclui o documento atomicamente.
+            // Salva os blocos, metadados e embeddings atomicamente.
             DB::transaction(function () use (
                 $text,
-                $chunks,
+                $chunkData,
                 $embeddings,
                 $embeddingModel
             ) {
@@ -102,10 +105,15 @@ class ProcessDocument implements ShouldQueue
 
                 $chunkRecords = [];
 
-                foreach ($chunks as $index => $content) {
+                foreach ($chunkData as $index => $chunk) {
+                    $content = $chunk['content'];
+
                     $chunkRecords[] = [
                         'chunk_index' => $index,
                         'content' => $content,
+                        'section' => $chunk['section'],
+                        'company' => $chunk['company'],
+                        'position' => $chunk['position'],
                         'character_count' => mb_strlen($content, 'UTF-8'),
                         'embedding' => $embeddings[$index],
                         'embedding_model' => $embeddingModel,

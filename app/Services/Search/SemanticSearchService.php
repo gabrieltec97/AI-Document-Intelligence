@@ -39,8 +39,32 @@ class SemanticSearchService
             return collect();
         }
 
+        // Identifica empresas mencionadas explicitamente na pergunta.
+        $matchingCompanies = $chunks
+            ->pluck('company')
+            ->filter()
+            ->unique()
+            ->filter(
+                fn (string $company) => mb_stripos($query, $company) !== false
+            )
+            ->values();
+
+        // Quando uma empresa é identificada, restringe a busca
+        // às experiências profissionais correspondentes.
+        if ($matchingCompanies->isNotEmpty()) {
+            $chunks = $chunks
+                ->filter(
+                    fn (DocumentChunk $chunk) => $matchingCompanies->contains(
+                        $chunk->company
+                    )
+                )
+                ->values();
+        }
+
+        // Gera o embedding da pergunta.
         $queryEmbedding = $this->embeddingService->embed([$query])[0];
 
+        // Calcula a similaridade e retorna os chunks mais relevantes.
         return $chunks
             ->map(function (DocumentChunk $chunk) use ($queryEmbedding) {
                 $chunk->similarity = $this->cosineSimilarity->calculate(

@@ -7,6 +7,7 @@ use App\Models\DocumentChunk;
 use App\Models\User;
 use App\Services\Embeddings\EmbeddingService;
 use App\Services\Generation\GenerationService;
+use App\Services\Rag\RagService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
 use Tests\TestCase;
@@ -70,7 +71,7 @@ class AskApiTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $this->mock(\App\Services\Rag\RagService::class)
+        $this->mock(RagService::class)
             ->shouldReceive('ask')
             ->once()
             ->with($user, 'Qual é o prazo?', 3)
@@ -85,6 +86,11 @@ class AskApiTest extends TestCase
                         'similarity' => 0.95,
                     ],
                 ],
+                'citation_validation' => [
+                    'valid' => true,
+                    'used' => [1],
+                    'invalid' => [],
+                ],
             ]);
 
         $response = $this->actingAs($user)->postJson('/api/ask', [
@@ -98,7 +104,10 @@ class AskApiTest extends TestCase
             ->assertJsonPath('answer', 'O prazo é de 30 dias [1].')
             ->assertJsonPath('total_sources', 1)
             ->assertJsonPath('sources.0.document_name', 'contrato.pdf')
-            ->assertJsonPath('sources.0.similarity', 0.95);
+            ->assertJsonPath('sources.0.similarity', 0.95)
+            ->assertJsonPath('citation_validation.valid', true)
+            ->assertJsonPath('citation_validation.used', [1])
+            ->assertJsonPath('citation_validation.invalid', []);
     }
 
     public function test_ask_does_not_use_other_users_documents(): void

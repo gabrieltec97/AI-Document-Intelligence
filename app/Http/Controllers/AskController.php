@@ -38,6 +38,7 @@ class AskController extends Controller
             'answer' => $result['answer'],
             'total_sources' => count($result['sources']),
             'sources' => $result['sources'],
+            'citation_validation' => $result['citation_validation'],
         ]);
     }
 }
