@@ -179,4 +179,53 @@ class TextNormalizerTest extends TestCase
         );
     }
 
+    public function test_it_preserves_column_spacing_in_plain_text_tables(): void
+    {
+        $text = "Nome          Cargo             Departamento\n"
+            ."Gabriel       Desenvolvedor     Tecnologia\n"
+            ."Maria         Analista          Financeiro";
+
+        $normalized = $this->normalizer->normalize($text);
+
+        $this->assertStringContainsString(
+            "Nome          Cargo             Departamento",
+            $normalized
+        );
+
+        $this->assertStringContainsString(
+            "Gabriel       Desenvolvedor     Tecnologia",
+            $normalized
+        );
+    }
+
+    public function test_it_preserves_resume_layout_and_contact_information(): void
+    {
+        $text = "Desenvolvedor de Software / Full Stack\n"
+            ."Telefone: (21) 99746-7377   E-mail: gabrielphp20@gmail.com"
+            ."    GitHub: github.com/gabrieltec97"
+            ."    LinkedIn: linkedin.com/in/\n"
+            ."gabrieltec\n\n"
+            ."HABILIDADES TÉCNICAS & FERRAMENTAS\n\n"
+            ."Linguagens & Front- PHP, JavaScript (ES6+), HTML5, CSS3.\n"
+            ."End:\n"
+            ."Back-End &            Laravel, APIs RESTful e Python.\n"
+            ."Frameworks:";
+
+        $normalized = $this->normalizer->normalize($text);
+
+        $this->assertStringContainsString(
+            "Desenvolvedor de Software / Full Stack\nTelefone:",
+            $normalized
+        );
+
+        $this->assertStringContainsString(
+            "Telefone: (21) 99746-7377   E-mail:",
+            $normalized
+        );
+
+        $this->assertStringContainsString(
+            "Back-End &            Laravel, APIs RESTful e Python.\nFrameworks:",
+            $normalized
+        );
+    }
 }

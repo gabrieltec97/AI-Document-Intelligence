@@ -20,9 +20,13 @@ class TextNormalizer
         $normalizedLines = [];
 
         foreach ($lines as $line) {
-            $line = preg_replace('/[ \t]+/u', ' ', $line) ?? $line;
+            $line = trim($line);
 
-            $normalizedLines[] = trim($line);
+            if (! $this->isLayoutLine($line)) {
+                $line = preg_replace('/[ \t]+/u', ' ', $line) ?? $line;
+            }
+
+            $normalizedLines[] = $line;
         }
 
         $normalizedText = implode("\n", $normalizedLines);
@@ -140,7 +144,38 @@ class TextNormalizer
             return true;
         }
 
+        // Rótulos curtos terminados em dois-pontos.
+        if (
+            mb_strlen($line, 'UTF-8') <= 40
+            && preg_match('/^\p{L}[\p{L}\p{M}\s&-]*:$/u', $line)
+        ) {
+            return true;
+        }
+
+        // Linhas que representam campos de contato.
+        if ($this->isLayoutLine($line)) {
+            return true;
+        }
+
         return false;
+    }
+
+    /**
+     * Identifica linhas com espaçamento significativo de layout.
+     */
+    private function isLayoutLine(string $line): bool
+    {
+        // Preserva alinhamentos com espaços amplos.
+        if (preg_match('/ {6,}/u', $line)) {
+            return true;
+        }
+
+        // Preserva campos de contato extraídos na mesma linha.
+        return preg_match(
+                '/(?:Telefone|E-mail|Email|GitHub|LinkedIn):.*'
+                .'(?:Telefone|E-mail|Email|GitHub|LinkedIn):/iu',
+                $line
+            ) === 1;
     }
 
 }
