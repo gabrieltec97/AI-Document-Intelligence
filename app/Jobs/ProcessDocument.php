@@ -8,10 +8,10 @@ use App\Services\Embeddings\EmbeddingService;
 use App\Services\Ocr\OcrService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\DB;
-use Throwable;
 use Illuminate\Queue\Attributes\FailOnTimeout;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 #[FailOnTimeout]
 class ProcessDocument implements ShouldQueue
@@ -22,8 +22,7 @@ class ProcessDocument implements ShouldQueue
 
     public function __construct(
         public int $documentId
-    ) {
-    }
+    ) {}
 
     public function handle(
         OcrService $ocrService,
@@ -35,11 +34,18 @@ class ProcessDocument implements ShouldQueue
                 ->lockForUpdate()
                 ->find($this->documentId);
 
-            if (!$document) {
+            if (! $document) {
                 return null;
             }
 
-            if (in_array($document->status, ['processing', 'processed'])) {
+            if ($document->status === 'processing') {
+                return null;
+            }
+
+            if (
+                $document->status === 'processed'
+                && $document->chunks()->exists()
+            ) {
                 return null;
             }
 
@@ -51,24 +57,35 @@ class ProcessDocument implements ShouldQueue
             return $document;
         });
 
-        if (!$document) {
+        if (! $document) {
             return;
         }
 
         try {
-            if (!Storage::exists($document->file_path)) {
-                throw new \RuntimeException(
-                    'Arquivo do documento não encontrado.'
-                );
+            // Reutiliza o texto extraído quando disponível.
+            $text = $document->extracted_text;
+
+            if (empty($text)) {
+                if (! Storage::exists($document->file_path)) {
+                    throw new \RuntimeException(
+                        'Arquivo do documento não encontrado.'
+                    );
+                }
+
+                $absolutePath = Storage::path($document->file_path);
+
+                // Extrai o texto quando ainda não existe texto salvo.
+                $text = $ocrService->extractText($absolutePath);
             }
-
-            $absolutePath = Storage::path($document->file_path);
-
-            // Extrai o texto do arquivo.
-            $text = $ocrService->extractText($absolutePath);
 
             // Divide o texto em blocos e identifica seus metadados.
             $chunkData = $chunkingService->splitWithMetadata($text);
+
+            if (empty($chunkData)) {
+                throw new \RuntimeException(
+                    'Não foi possível gerar blocos de conteúdo para indexação.'
+                );
+            }
 
             // Extrai somente o conteúdo para gerar os embeddings.
             $chunks = array_column($chunkData, 'content');
@@ -96,7 +113,7 @@ class ProcessDocument implements ShouldQueue
                     ->lockForUpdate()
                     ->find($this->documentId);
 
-                if (!$document || $document->status !== 'processing') {
+                if (! $document || $document->status !== 'processing') {
                     return;
                 }
 
@@ -148,7 +165,7 @@ class ProcessDocument implements ShouldQueue
                 ->lockForUpdate()
                 ->find($this->documentId);
 
-            if (!$document || $document->status === 'processed') {
+            if (! $document || $document->status === 'processed') {
                 return;
             }
 

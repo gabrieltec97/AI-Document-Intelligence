@@ -146,12 +146,24 @@ class RagService
             '',
             $classificationInstructions,
             'PRECISÃO E FONTES:',
-            'Toda afirmação factual deve apresentar a referência [n] da fonte que a comprova.',
-            'Utilize somente os números de fontes existentes no contexto.',
-            'Coloque a referência imediatamente após a afirmação correspondente.',
+            'REGRA OBRIGATÓRIA: nenhuma afirmação factual pode aparecer sem uma citação.',
+            'Cada tópico deve terminar com a referência [n] da fonte que comprova aquela informação.',
+            'Cada parágrafo factual deve terminar com sua respectiva referência [n].',
+            'As referências devem aparecer no próprio tópico ou parágrafo, nunca somente no final da resposta.',
+            'Utilize exclusivamente os números das fontes existentes no contexto.',
+            'Não invente números de referências.',
             'Quando uma afirmação depender de mais de uma fonte, cite todas as fontes relevantes.',
             'Não atribua uma referência a uma informação que ela não comprova.',
-            'Não repita informações presentes em mais de um trecho.',
+            'Se não conseguir identificar uma fonte que comprove determinada informação, não apresente essa informação.',
+            'Se nenhuma fonte responder à pergunta, informe que não encontrou a informação nos documentos.',
+            '',
+            'EXEMPLO DE FORMATO CORRETO:',
+            '- Testes unitários verificam unidades isoladas de código [1].',
+            '- Testes de integração verificam a interação entre componentes [2].',
+            '',
+            'EXEMPLO DE FORMATO INCORRETO:',
+            '- Testes unitários verificam unidades isoladas de código.',
+            '- Testes de integração verificam a interação entre componentes.',
             '',
             'FORMATO DA RESPOSTA:',
             'Responda diretamente ao que foi perguntado.',
@@ -417,6 +429,30 @@ class RagService
         foreach ($lines as $line) {
             $trimmedLine = trim($line);
 
+            if ($trimmedLine === '') {
+                continue;
+            }
+
+            // Títulos Markdown.
+            if (preg_match('/^#{1,6}\s+/', $trimmedLine)) {
+                continue;
+            }
+
+            // Títulos simples terminados em dois-pontos.
+            if (preg_match('/^[^.!?]+:\s*$/u', $trimmedLine)) {
+                continue;
+            }
+
+            // Separadores Markdown.
+            if (preg_match('/^[-*_]{3,}$/', $trimmedLine)) {
+                continue;
+            }
+
+            // Abstinências explícitas.
+            if ($this->isExplicitAbstention($trimmedLine)) {
+                continue;
+            }
+
             $isListItem = preg_match(
                 '/^([-*+]|\d+[.)])\s+/',
                 $trimmedLine
@@ -424,7 +460,12 @@ class RagService
 
             $hasCitation = preg_match('/\[\d+\]/', $trimmedLine);
 
-            if ($isListItem && ! $hasCitation) {
+            // Listas sem citações são sempre identificadas.
+            // Parágrafos só são verificados quando existe alguma citação na resposta.
+            if (
+                ! $hasCitation
+                && ($isListItem || ! empty($used))
+            ) {
                 $uncitedItems[] = $trimmedLine;
             }
         }

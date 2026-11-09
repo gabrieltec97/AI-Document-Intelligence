@@ -9,12 +9,11 @@ class TesseractOcrService implements OcrService
 {
     public function __construct(
         private DocxTextExtractor $docxTextExtractor
-    ) {
-    }
+    ) {}
 
     public function extractText(string $filePath): string
     {
-        if (!is_file($filePath)) {
+        if (! is_file($filePath)) {
             throw new RuntimeException(
                 "Arquivo não encontrado: {$filePath}"
             );
@@ -25,8 +24,7 @@ class TesseractOcrService implements OcrService
         return match ($mimeType) {
             'application/pdf' => $this->extractFromPdf($filePath),
 
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            => $this->docxTextExtractor->extract($filePath),
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => $this->docxTextExtractor->extract($filePath),
 
             'image/jpeg',
             'image/png' => $this->extractFromImage($filePath),
@@ -37,62 +35,122 @@ class TesseractOcrService implements OcrService
         };
     }
 
+
     private function extractFromPdf(string $filePath): string
     {
-        $tempDirectory = sys_get_temp_dir() . '/ocr_' . uniqid();
+        $infoProcess = new Process([
+            'pdfinfo',
+            $filePath,
+        ]);
 
-        if (!mkdir($tempDirectory, 0755, true) && !is_dir($tempDirectory)) {
+        $infoProcess->setTimeout(120);
+        $infoProcess->run();
+
+        if (! $infoProcess->isSuccessful()) {
+            throw new RuntimeException(
+                'Erro ao consultar informações do PDF: '.
+                $infoProcess->getErrorOutput()
+            );
+        }
+
+        if (! preg_match('/^Pages:\s+(\d+)/m', $infoProcess->getOutput(), $matches)) {
+            throw new RuntimeException(
+                'Não foi possível identificar a quantidade de páginas do PDF.'
+            );
+        }
+
+        $totalPages = (int) $matches[1];
+
+        $tempDirectory = sys_get_temp_dir().'/ocr_'.uniqid();
+
+        if (! mkdir($tempDirectory, 0755, true) && ! is_dir($tempDirectory)) {
             throw new RuntimeException(
                 'Não foi possível criar o diretório temporário do OCR.'
             );
         }
 
         try {
-            $outputPrefix = $tempDirectory . '/page';
-
-            $pdfProcess = new Process([
-                'pdftoppm',
-                '-png',
-                '-r',
-                '150',
-                $filePath,
-                $outputPrefix,
-            ]);
-
-            $pdfProcess->setTimeout(120);
-            $pdfProcess->run();
-
-            if (!$pdfProcess->isSuccessful()) {
-                throw new RuntimeException(
-                    'Erro ao converter PDF para imagem: ' .
-                    $pdfProcess->getErrorOutput()
-                );
-            }
-
-            $images = glob($tempDirectory . '/page-*.png');
-
-            if (empty($images)) {
-                throw new RuntimeException(
-                    'Nenhuma página foi gerada a partir do PDF.'
-                );
-            }
-
-            natsort($images);
-
             $fullText = [];
 
-            foreach ($images as $image) {
-                $text = $this->extractFromImage($image);
+            for ($page = 1; $page <= $totalPages; $page++) {
+                $textProcess = new Process([
+                    'pdftotext',
+                    '-f',
+                    (string) $page,
+                    '-l',
+                    (string) $page,
+                    '-layout',
+                    $filePath,
+                    '-',
+                ]);
 
-                if ($text !== '') {
-                    $fullText[] = $text;
+                $textProcess->setTimeout(120);
+                $textProcess->run();
+
+                if (! $textProcess->isSuccessful()) {
+                    throw new RuntimeException(
+                        "Erro ao extrair texto da página {$page}: ".
+                        $textProcess->getErrorOutput()
+                    );
                 }
 
-                @unlink($image);
+                $pageText = trim(
+                    $textProcess->getOutput(),
+                    " \n\r\t\v\0\f"
+                );
+
+                if ($pageText === '') {
+                    $outputPrefix = $tempDirectory.'/page_'.$page;
+
+                    $pdfProcess = new Process([
+                        'pdftoppm',
+                        '-f',
+                        (string) $page,
+                        '-l',
+                        (string) $page,
+                        '-png',
+                        '-r',
+                        '150',
+                        $filePath,
+                        $outputPrefix,
+                    ]);
+
+                    $pdfProcess->setTimeout(120);
+                    $pdfProcess->run();
+
+                    if (! $pdfProcess->isSuccessful()) {
+                        throw new RuntimeException(
+                            "Erro ao converter a página {$page} para imagem: ".
+                            $pdfProcess->getErrorOutput()
+                        );
+                    }
+
+                    $images = glob($outputPrefix.'-*.png');
+
+                    if (empty($images)) {
+                        throw new RuntimeException(
+                            "Nenhuma imagem foi gerada para a página {$page}."
+                        );
+                    }
+
+                    foreach ($images as $image) {
+                        $pageText = $this->extractFromImage($image);
+
+                        @unlink($image);
+                    }
+                }
+
+                if ($pageText !== '') {
+                    $fullText[] = $pageText;
+                }
             }
 
             return trim(implode("\n\n", $fullText));
         } finally {
+            foreach (glob($tempDirectory.'/*') ?: [] as $file) {
+                @unlink($file);
+            }
+
             @rmdir($tempDirectory);
         }
     }
@@ -120,16 +178,16 @@ class TesseractOcrService implements OcrService
         $process->setTimeout(120);
         $process->run();
 
-        if (!$process->isSuccessful()) {
+        if (! $process->isSuccessful()) {
             throw new RuntimeException(
-                'Erro ao executar Tesseract: ' .
+                'Erro ao executar Tesseract: '.
                 $process->getErrorOutput()
             );
         }
 
-        $textFile = $outputBase . '.txt';
+        $textFile = $outputBase.'.txt';
 
-        if (!is_file($textFile)) {
+        if (! is_file($textFile)) {
             throw new RuntimeException(
                 'O Tesseract não gerou o arquivo de texto.'
             );

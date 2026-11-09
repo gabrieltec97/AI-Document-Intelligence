@@ -314,7 +314,7 @@ class RagServiceTest extends TestCase
             ->with(Mockery::on(function ($prompt) {
                 return str_contains(
                     $prompt,
-                    'Toda afirmação factual deve apresentar a referência [n] da fonte que a comprova.'
+                    'REGRA OBRIGATÓRIA: nenhuma afirmação factual pode aparecer sem uma citação.'
                 );
             }))
             ->andReturn('Desenvolvimento de aplicações com PHP e Laravel [1].');
@@ -1092,5 +1092,66 @@ class RagServiceTest extends TestCase
         ], $result['citation_validation']);
 
         $this->assertCount(4, $result['sources']);
+    }
+
+    public function test_it_rejects_uncited_factual_paragraphs(): void
+    {
+        $searchService = Mockery::mock(SemanticSearchService::class);
+        $generationService = Mockery::mock(GenerationService::class);
+
+        $user = new User;
+
+        $document = new Document([
+            'original_name' => 'contrato.pdf',
+        ]);
+
+        $chunks = collect();
+
+        foreach ([40, 41] as $id) {
+            $chunk = new DocumentChunk([
+                'document_id' => 10,
+                'chunk_index' => $id - 40,
+                'content' => 'Informação documentada.',
+            ]);
+
+            $chunk->id = $id;
+            $chunk->setRelation('document', $document);
+            $chunk->similarity = 0.95;
+
+            $chunks->push($chunk);
+        }
+
+        $searchService
+            ->shouldReceive('search')
+            ->once()
+            ->andReturn($chunks);
+
+        $generationService
+            ->shouldReceive('generate')
+            ->once()
+            ->andReturn(
+                "O prazo é de 30 dias [1].\n\nA multa é de 10%."
+            );
+
+        $service = new RagService(
+            $searchService,
+            $generationService
+        );
+
+        $result = $service->ask(
+            $user,
+            'Quais são as condições do contrato?'
+        );
+
+        $this->assertSame([
+            'valid' => false,
+            'has_citations' => true,
+            'used' => [1],
+            'invalid' => [],
+            'uncited_items' => [
+                'A multa é de 10%.',
+            ],
+            'abstained' => false,
+        ], $result['citation_validation']);
     }
 }
